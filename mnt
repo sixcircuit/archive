@@ -1,0 +1,35 @@
+#!/bin/bash
+
+disk_name=${1%/}
+
+cd $disk_name || exit
+
+mkdir ./mount_point &> /dev/null
+sudo umount ./mount_point &> /dev/null
+sudo rm ./temp.iso &> /dev/null
+
+gunzip -c $disk_name.iso.gz > ./temp.iso
+
+cdsha=`cat ./$disk_name.iso.sha1 | cut -d " " -f 1`
+isosha=`sha1sum ./temp.iso | cut -d " " -f 1`
+
+echo "CD SHA1 :" `cat ./$disk_name.iso.sha1`
+echo "ISO SHA1:" $isosha
+
+if test "$isosha" = "$cdsha"; then
+    echo "Archive verified."
+else
+    echo "Archive checksum error!"
+    exit
+fi
+
+sudo mount -o loop ./temp.iso ./mount_point
+cd ./mount_point
+bash
+cd ..
+
+sudo umount ./mount_point
+rmdir ./mount_point
+rm ./temp.iso
+
+cd ..

@@ -1,0 +1,70 @@
+#!/bin/bash
+
+device="/dev/cdrom"
+
+blocksize=0
+blockcount=0
+totalbytes=0
+
+get_disk_parameters()
+{
+
+    blocksize=`isoinfo -d -i $device | grep "^Logical block size is:" | cut -d " " -f 5`
+    if test "$blocksize" = ""; then
+        echo catdevice FATAL ERROR: Blank blocksize >&2
+        exit
+    fi
+
+    blockcount=`isoinfo -d -i $device | grep "^Volume size is:" | cut -d " " -f 4`
+    if test "$blockcount" = ""; then
+        echo catdevice FATAL ERROR: Blank blockcount >&2
+        exit
+    fi
+
+    echo "Block size:" $blocksize
+
+    echo "Block count:" $blockcount
+
+    totalbytes=$(($blocksize * $blockcount))
+    
+    humanbytes=`numfmt --to=iec-i --suffix=B $totalbytes`
+
+    echo "Total size:"  $humanbytes
+}
+
+rip()
+{
+    dd if=$device bs=$blocksize count=$blockcount | pv --size $totalbytes | tee >(sha1sum | cut -d " " -f 1 > $1/$1.iso.sha1) | gzip -c > $1/$1.iso.gz
+}
+
+verify() 
+{
+      isosha=`gunzip -c $1/$1.iso.gz | pv --size $totalbytes | sha1sum | cut -d " " -f 1` >&2
+      cdsha=`cat $1/$1.iso.sha1`
+      echo "CD SHA1 :" $cdsha
+      echo "ISO SHA1:" $isosha
+
+      if test "$isosha" = "$cdsha"; then
+          sha1sum $1/$1.iso.gz | cut -d " " -f 1 > $1/$1.iso.gz.sha1
+          echo "Archive verified:" $1/$1.iso.gz
+          archivesha=`cat  $1/$1.iso.gz.sha1`
+          echo "Archive SHA1:" $archivesha
+      else
+          echo "Archive checksum error!"
+      fi
+}
+
+sha1cd()
+{
+      shacd=`dd if=$device bs=$blocksize count=$blockcount | pv --size $totalbytes | sha1sum` >&2
+      echo "Recomputed SHA of CD: "$shacd
+}
+
+
+if [ $# -eq 0 ]
+then
+    echo "usage: rip <out_file>"
+else
+    echo "ripping to: "$1/$1.iso.gz
+    mkdir $1 && get_disk_parameters && rip $1 && verify $1
+fi
